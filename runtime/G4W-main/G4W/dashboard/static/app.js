@@ -803,11 +803,18 @@ function renderThemeEditor() {
   const theme = (dashboardData && dashboardData.configuration && dashboardData.configuration.theme) || {};
   const container = $("theme-editor");
   if (!container) return;
+  const currentInputs = {};
+  container.querySelectorAll("[data-theme-var]").forEach((input) => {
+    currentInputs[`${input.dataset.themeGroup}:${input.dataset.themeVar}`] = input.value;
+  });
   const mode = themeEditMode === "light" ? "light" : "dark";
   const shared = theme.shared || {};
   const surface = theme[mode] || {};
-  const row = (key, label, value, group) =>
-    `<label class="theme-row"><span>${t(label)}<small>--${key}</small></span><input type="text" data-theme-var="${key}" data-theme-group="${group}" value="${esc(value)}" placeholder="${t("默认")}" spellcheck="false" /></label>`;
+  const row = (key, label, value, group) => {
+    const k = `${group}:${key}`;
+    const finalVal = currentInputs[k] !== undefined ? currentInputs[k] : value;
+    return `<label class="theme-row"><span>${t(label)}<small>--${key}</small></span><input type="text" data-theme-var="${key}" data-theme-group="${group}" value="${esc(finalVal)}" placeholder="${t("默认")}" spellcheck="false" /></label>`;
+  };
   const html =
     `<div class="theme-group-label">${t("通用(深浅共用)")}</div>` +
     THEME_EDITOR_VARS.shared.map(([key, label]) => row(key, label, shared[key] || "", "shared")).join("") +
@@ -888,7 +895,14 @@ function renderMaintenanceActions(actions) {
   const host = $("setting-maintenance-actions");
   if (!host) return;
   if (!Array.isArray(actions) || !actions.length) { host.innerHTML = ""; return; }
-  host.innerHTML = actions.map((item) => `<label class="switch-row"><span><b>${esc(t(item.label || item.id))}</b><small>${esc(t(item.desc || ""))}</small></span><input type="checkbox" data-maintenance-action="${esc(item.id)}" ${item.allowed ? "checked" : ""} /></label>`).join("");
+  const currentChecked = {};
+  host.querySelectorAll("[data-maintenance-action]").forEach((el) => {
+    currentChecked[el.dataset.maintenanceAction] = el.checked;
+  });
+  host.innerHTML = actions.map((item) => {
+    const checked = currentChecked[item.id] !== undefined ? currentChecked[item.id] : item.allowed;
+    return `<label class="switch-row"><span><b>${esc(t(item.label || item.id))}</b><small>${esc(t(item.desc || ""))}</small></span><input type="checkbox" data-maintenance-action="${esc(item.id)}" ${checked ? "checked" : ""} /></label>`;
+  }).join("");
 }
 
 function renderSettings(config) {
@@ -2725,7 +2739,16 @@ window.addEventListener("g4w:i18n-changed", () => {
   if ($("page-name")) $("page-name").textContent = t(pageTitles[page] || "Overview");
   document.title = `${t(pageTitles[page] || "Overview")} · G4W Control Center`;
   tickTopbarClock();
-  if (dashboardData) render(dashboardData);
+  if (dashboardData) {
+    render(dashboardData);
+    if (dashboardData.configuration) {
+      renderMaintenanceActions(dashboardData.configuration.maintenanceActions);
+    }
+  }
+  renderThemeEditor();
+  if (settingsDirty && $("settings-message")) {
+    $("settings-message").textContent = t("有未保存的修改");
+  }
   if (timelineData) {
     if ($("timeline-date") && timelineData.dates) {
       $("timeline-date").innerHTML = [...timelineData.dates].reverse().map((date) => `<option value="${date}">${date} · ${weekday(date)}</option>`).join("");
@@ -3508,7 +3531,20 @@ $("sop-next")?.addEventListener("click", () => moveSop(1));
 $("knowledge-search").addEventListener("input", (event) => { knowledgeQuery = event.target.value; renderKnowledgeCatalog(dashboardData?.knowledge?.items || []); });
 $("knowledge-tag").addEventListener("change", (event) => { knowledgeTag = event.target.value; renderKnowledgeCatalog(dashboardData?.knowledge?.items || []); });
 $("settings-form").addEventListener("submit", saveSettings);
-$("settings-form").addEventListener("input", (event) => { if (event.target.closest("[data-model-target]") || event.target.id === "setting-ui-lang" || event.target.id === "setting-ui-timezone") return; settingsDirty = true; $("settings-message").textContent = t("有未保存的修改"); });
+$("settings-form").addEventListener("input", (event) => {
+  if (
+    event.target.closest("[data-model-target]") ||
+    event.target.closest("[data-theme-var]") ||
+    [
+      "setting-ui-lang", "setting-ui-timezone",
+      "model-provider-name", "model-provider-base", "model-provider-key", "model-fetch-provider",
+      "embedding-network", "update-mirror",
+      "setting-old-password", "setting-new-password", "setting-new-password2"
+    ].includes(event.target.id)
+  ) return;
+  settingsDirty = true;
+  $("settings-message").textContent = t("有未保存的修改");
+});
 document.querySelectorAll("[data-model-target]").forEach((select) => select.addEventListener("change", () => switchModel(select)));
 $("prompt-refresh").addEventListener("click", loadPrompt);
 $("overview-start").addEventListener("click", startG4W);
